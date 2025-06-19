@@ -3,6 +3,9 @@ name    = "ratatui-wgpu-ed"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+opt-level = 's'
+
 [dependencies]
 anyhow                   = "1.0.93"
 console_error_panic_hook = "0.1.7"
