@@ -10,7 +10,7 @@
     <script>
       import("./binary/wasm-example.js").then((module) => {
         module.default(
-          new URL("binary/wasm-example_bg.wasm", window.location.origin)
+          new URL("./binary/wasm-example_bg.wasm", window.location.origin)
         );
       });
     </script>
