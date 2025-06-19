@@ -141,6 +141,9 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::Resized(size) => {
                 terminal.backend_mut().resize(size.width, size.height);
+                terminal
+                    .draw(|f| f.render_widget(&self.ed, f.area()))
+                    .unwrap();
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let key = match event.logical_key {
