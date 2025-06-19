@@ -9,9 +9,7 @@
   <body style="margin: 0; overflow: hidden">
     <script>
       import("./binary/wasm-example.js").then((module) => {
-        module.default(
-          new URL("./binary/wasm-example_bg.wasm", window.location.origin)
-        );
+        module.default();
       });
     </script>
     <script></script>
