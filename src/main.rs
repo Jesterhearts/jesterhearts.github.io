@@ -52,7 +52,7 @@ pub fn main() -> anyhow::Result<()> {
 
     let event_loop = EventLoop::builder().build()?;
     let mut ed = TextArea::new(vec![
-        "🐭🦀🧀 This is a simple text editor using Ratatui and Wgpu. 🧀🦀🐭".to_string(),
+        "This is a simple text editor using Ratatui and Wgpu.".to_string(),
         String::default(),
         "IME is currently disabled in this example because supporting it requires substantial additional work with hidden text areas.".to_string(),
 
@@ -117,9 +117,6 @@ impl ApplicationHandler for App {
                         Font::new(include_bytes!("fonts/CaskaydiaMonoNerdFont-Regular.ttf"))
                             .unwrap(),
                     )
-                    .with_fonts(vec![
-                        Font::new(include_bytes!("fonts/NotoColorEmoji-Regular.ttf")).unwrap(),
-                    ])
                     .with_width_and_height(Dimensions { width, height })
                     .build_with_target(wgpu::SurfaceTarget::Canvas(canvas))
                     .await
