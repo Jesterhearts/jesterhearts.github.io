@@ -13,7 +13,7 @@ console_log              = "1.0.0"
 js-sys                   = "0.3.72"
 log                      = "0.4.27"
 ratatui                  = { version = "0.29.0", default-features = false }
-ratatui-wgpu             = { version = "0.3.1", features = [ "web" ] }
+ratatui-wgpu             = { git = "https://github.com/Jesterhearts/ratatui-wgpu", branch = "main", features = [ "web" ] }
 unicode-segmentation     = "1.12.0"
 unicode-width            = "0.2.0"
 wasm-bindgen             = "0.2.95"
