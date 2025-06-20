@@ -14,9 +14,10 @@ js-sys                   = "0.3.72"
 log                      = "0.4.27"
 ratatui                  = { version = "0.29.0", default-features = false }
 ratatui-wgpu             = { version = "0.3.1", features = [ "web" ] }
-tui-textarea             = { version = "0.7.0", default-features = false, features = [ "ratatui" ] }
+unicode-segmentation     = "1.12.0"
+unicode-width            = "0.2.0"
 wasm-bindgen             = "0.2.95"
 wasm-bindgen-futures     = "0.4.45"
-web-sys                  = { version = "0.3.72", features = [ "MessageEvent", "Worker", "WorkerOptions", "WorkerType" ] }
+web-sys                  = { version = "0.3.72", features = [ "HtmlTextAreaElement" ] }
 wgpu                     = "25.0.2"
 winit                    = "0.30.11"

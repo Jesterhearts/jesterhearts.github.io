@@ -6,7 +6,11 @@ use std::{
 
 use ratatui::{
     prelude::*,
-    widgets::Block,
+    symbols::border,
+    widgets::{
+        Block,
+        Paragraph,
+    },
 };
 use ratatui_wgpu::{
     Builder,
@@ -15,18 +19,16 @@ use ratatui_wgpu::{
     WgpuBackend,
     shaders::CrtPostProcessor,
 };
-use tui_textarea::{
-    Input,
-    Key,
-    TextArea,
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
+use wasm_bindgen::JsCast;
+use web_sys::{
+    HtmlCanvasElement,
+    HtmlTextAreaElement,
 };
-use web_sys::HtmlCanvasElement;
 use winit::{
     application::ApplicationHandler,
-    event::{
-        ElementState,
-        WindowEvent,
-    },
+    event::WindowEvent,
     event_loop::EventLoop,
     platform::web::*,
     window::{
@@ -40,10 +42,7 @@ type CrtBackend = WgpuBackend<'static, 'static, CrtPostProcessor>;
 struct App {
     window: Rc<RefCell<Option<Window>>>,
     backend: Rc<RefCell<Option<Terminal<CrtBackend>>>>,
-    ed: TextArea<'static>,
-    ctrl_down: bool,
-    alt_down: bool,
-    shift_down: bool,
+    text_input: Rc<RefCell<Option<HtmlTextAreaElement>>>,
 }
 
 pub fn main() -> anyhow::Result<()> {
@@ -51,21 +50,11 @@ pub fn main() -> anyhow::Result<()> {
     console_log::init_with_level(log::Level::Debug).unwrap();
 
     let event_loop = EventLoop::builder().build()?;
-    let mut ed = TextArea::new(vec![
-        "This is a simple text editor using Ratatui and Wgpu.".to_string(),
-        String::default(),
-        "IME is currently disabled in this example because supporting it requires substantial additional work with hidden text areas.".to_string(),
-
-    ]);
-    ed.set_block(Block::bordered());
 
     let app = App {
         window: Rc::default(),
         backend: Rc::default(),
-        ed,
-        alt_down: false,
-        ctrl_down: false,
-        shift_down: false,
+        text_input: Rc::default(),
     };
     event_loop.spawn_app(app);
 
@@ -82,11 +71,34 @@ impl ApplicationHandler for App {
 
         let window = self.window.clone();
         let backend = self.backend.clone();
+        let input = self.text_input.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            let (height, width) = web_sys::window()
+            let (text_input, height, width) = web_sys::window()
                 .and_then(|win| win.document())
                 .and_then(|doc| {
                     let dst = doc.get_element_by_id("glcanvas")?;
+
+                    let input = doc
+                        .create_element("textarea")
+                        .ok()?
+                        .dyn_into::<HtmlTextAreaElement>()
+                        .ok()?;
+                    input.set_value(
+                        "This is a simple text editor using ratatui-wgpu.
+
+It even supports emojis! 😊🦀🐁
+On Windows, you can use WIN+. to insert and test this out!",
+                    );
+
+                    let style = input.style();
+                    style.set_property("opacity", "0").ok()?;
+                    style.set_property("width", "100%").ok()?;
+                    style.set_property("height", "1px").ok()?;
+                    style.set_property("position", "absolute").ok()?;
+                    style.set_property("top", "0").ok()?;
+                    style.set_property("left", "0").ok()?;
+                    style.set_property("z-index", "-1").ok()?;
+                    dst.append_child(&input).ok()?;
 
                     let canvas: HtmlCanvasElement = window.borrow().as_ref()?.canvas()?;
                     let style = canvas.style();
@@ -103,20 +115,28 @@ impl ApplicationHandler for App {
 
                     let bounds = canvas.get_bounding_client_rect();
                     Some((
+                        input,
                         NonZeroU32::new(bounds.height() as u32)?,
                         NonZeroU32::new(bounds.width() as u32)?,
                     ))
                 })
                 .expect("Failed to attach canvas");
 
+            window
+                .borrow_mut()
+                .as_mut()
+                .unwrap()
+                .set_prevent_default(false);
             let canvas = window.borrow().as_ref().unwrap().canvas().unwrap();
 
             *backend.borrow_mut() = Some(
                 Terminal::new(
                     Builder::from_font(
-                        Font::new(include_bytes!("fonts/CaskaydiaMonoNerdFont-Regular.ttf"))
-                            .unwrap(),
+                        Font::new(include_bytes!("fonts/NotoSansMono.ttf")).unwrap(),
                     )
+                    .with_fonts(vec![
+                        Font::new(include_bytes!("fonts/NotoColorEmoji-Regular.ttf")).unwrap(),
+                    ])
                     .with_width_and_height(Dimensions { width, height })
                     .build_with_target(wgpu::SurfaceTarget::Canvas(canvas))
                     .await
@@ -124,6 +144,9 @@ impl ApplicationHandler for App {
                 )
                 .unwrap(),
             );
+
+            text_input.focus().unwrap();
+            *input.borrow_mut() = Some(text_input);
         });
     }
 
@@ -139,104 +162,88 @@ impl ApplicationHandler for App {
         };
 
         match event {
+            WindowEvent::Focused(true) => {
+                self.text_input.borrow().as_ref().unwrap().focus().unwrap();
+                self.window
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .set_prevent_default(false);
+            }
             WindowEvent::Resized(size) => {
                 terminal.backend_mut().resize(size.width, size.height);
-                terminal
-                    .draw(|f| f.render_widget(&self.ed, f.area()))
-                    .unwrap();
-            }
-            WindowEvent::KeyboardInput { event, .. } => {
-                let key = match event.logical_key {
-                    winit::keyboard::Key::Named(named_key) => match named_key {
-                        winit::keyboard::NamedKey::Backspace => Key::Backspace,
-                        winit::keyboard::NamedKey::Enter => Key::Enter,
-                        winit::keyboard::NamedKey::Escape => Key::Esc,
-                        winit::keyboard::NamedKey::Tab => Key::Tab,
-                        winit::keyboard::NamedKey::ArrowDown => Key::Down,
-                        winit::keyboard::NamedKey::ArrowLeft => Key::Left,
-                        winit::keyboard::NamedKey::ArrowRight => Key::Right,
-                        winit::keyboard::NamedKey::ArrowUp => Key::Up,
-                        winit::keyboard::NamedKey::Control => {
-                            self.ctrl_down = event.state == ElementState::Pressed;
-                            return;
-                        }
-                        winit::keyboard::NamedKey::Alt => {
-                            self.alt_down = event.state == ElementState::Pressed;
-                            return;
-                        }
-                        winit::keyboard::NamedKey::Shift => {
-                            self.shift_down = event.state == ElementState::Pressed;
-                            return;
-                        }
-                        winit::keyboard::NamedKey::End => Key::End,
-                        winit::keyboard::NamedKey::Home => Key::Home,
-                        winit::keyboard::NamedKey::PageDown => Key::PageDown,
-                        winit::keyboard::NamedKey::PageUp => Key::PageUp,
-                        winit::keyboard::NamedKey::Copy => Key::Copy,
-                        winit::keyboard::NamedKey::Cut => Key::Cut,
-                        winit::keyboard::NamedKey::Delete => Key::Delete,
-                        winit::keyboard::NamedKey::Paste => Key::Paste,
-                        winit::keyboard::NamedKey::Space => Key::Char(' '),
-                        winit::keyboard::NamedKey::F1 => Key::F(1),
-                        winit::keyboard::NamedKey::F2 => Key::F(2),
-                        winit::keyboard::NamedKey::F3 => Key::F(3),
-                        winit::keyboard::NamedKey::F4 => Key::F(4),
-                        winit::keyboard::NamedKey::F5 => Key::F(5),
-                        winit::keyboard::NamedKey::F6 => Key::F(6),
-                        winit::keyboard::NamedKey::F7 => Key::F(7),
-                        winit::keyboard::NamedKey::F8 => Key::F(8),
-                        winit::keyboard::NamedKey::F9 => Key::F(9),
-                        winit::keyboard::NamedKey::F10 => Key::F(10),
-                        winit::keyboard::NamedKey::F11 => Key::F(11),
-                        winit::keyboard::NamedKey::F12 => Key::F(12),
-                        winit::keyboard::NamedKey::F13 => Key::F(13),
-                        winit::keyboard::NamedKey::F14 => Key::F(14),
-                        winit::keyboard::NamedKey::F15 => Key::F(15),
-                        winit::keyboard::NamedKey::F16 => Key::F(16),
-                        winit::keyboard::NamedKey::F17 => Key::F(17),
-                        winit::keyboard::NamedKey::F18 => Key::F(18),
-                        winit::keyboard::NamedKey::F19 => Key::F(19),
-                        winit::keyboard::NamedKey::F20 => Key::F(20),
-                        winit::keyboard::NamedKey::F21 => Key::F(21),
-                        winit::keyboard::NamedKey::F22 => Key::F(22),
-                        winit::keyboard::NamedKey::F23 => Key::F(23),
-                        winit::keyboard::NamedKey::F24 => Key::F(24),
-                        winit::keyboard::NamedKey::F25 => Key::F(25),
-                        winit::keyboard::NamedKey::F26 => Key::F(26),
-                        winit::keyboard::NamedKey::F27 => Key::F(27),
-                        winit::keyboard::NamedKey::F28 => Key::F(28),
-                        winit::keyboard::NamedKey::F29 => Key::F(29),
-                        winit::keyboard::NamedKey::F30 => Key::F(30),
-                        winit::keyboard::NamedKey::F31 => Key::F(31),
-                        winit::keyboard::NamedKey::F32 => Key::F(32),
-                        winit::keyboard::NamedKey::F33 => Key::F(33),
-                        winit::keyboard::NamedKey::F34 => Key::F(34),
-                        winit::keyboard::NamedKey::F35 => Key::F(35),
-                        _ => return,
-                    },
-                    winit::keyboard::Key::Character(c) => {
-                        Key::Char(c.chars().next().unwrap_or_default())
-                    }
-                    _ => return,
-                };
-
-                if event.state == ElementState::Pressed {
-                    self.ed.input(Input {
-                        key,
-                        ctrl: self.ctrl_down,
-                        alt: self.alt_down,
-                        shift: self.shift_down,
-                    });
-                }
+                Self::redraw(self.text_input.borrow().as_ref().unwrap(), terminal);
             }
             WindowEvent::RedrawRequested => {
-                terminal
-                    .draw(|f| f.render_widget(&self.ed, f.area()))
-                    .unwrap();
+                Self::redraw(self.text_input.borrow().as_ref().unwrap(), terminal);
             }
             _ => {}
         }
 
         self.window.borrow().as_ref().unwrap().request_redraw();
+    }
+}
+
+impl App {
+    fn redraw(text_input: &HtmlTextAreaElement, terminal: &mut Terminal<CrtBackend>) {
+        let current = text_input.value();
+
+        let current_start = text_input.selection_start().ok().flatten();
+        let current_end = text_input.selection_end().ok().flatten();
+
+        let text_len = current.len();
+        let start = current_start.unwrap_or_default();
+        let end = current_end.unwrap_or(text_len as u32);
+
+        let start_highlight = start.min(end);
+        let end_highlight = start.max(end);
+
+        let end_highlight = if start_highlight == end_highlight {
+            start_highlight + 1
+        } else {
+            end_highlight
+        };
+
+        let mut cur_char = 0;
+        let mut lines = vec![];
+        let mut highlight = false;
+
+        for line in current.split('\n') {
+            let mut spans = vec![];
+            let mut cur_span = String::new();
+            for c in line.graphemes(true).chain(std::iter::once(" ")) {
+                if cur_char >= start_highlight && cur_char < end_highlight {
+                    if !highlight {
+                        highlight = true;
+                        spans.push(Span::from(cur_span));
+                        cur_span = String::new();
+                    }
+                } else if highlight {
+                    highlight = false;
+                    spans.push(Span::from(cur_span).style(Style::default().reversed()));
+                    cur_span = String::new();
+                }
+
+                cur_span.push_str(c);
+                cur_char += c.width().max(1) as u32;
+            }
+
+            if highlight {
+                spans.push(Span::from(cur_span).style(Style::default().reversed()));
+            } else {
+                spans.push(Span::from(cur_span));
+            }
+
+            lines.push(Line::from_iter(spans));
+        }
+
+        terminal
+            .draw(|f| {
+                f.render_widget(
+                    Paragraph::new(lines).block(Block::bordered().border_set(border::ROUNDED)),
+                    f.area(),
+                )
+            })
+            .unwrap();
     }
 }
